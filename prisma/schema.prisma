@@ -1,8 +1,586 @@
+
 generator client {
   provider = "prisma-client-js"
-  // output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  STARTUP
+  INVESTOR
+  INCUBATOR
+  ACCELERATOR
+  MENTOR
+  GOVERNMENT
+  PUBLIC
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum AyushCategory {
+  AYURVEDA
+  YOGA_NATUROPATHY
+  UNANI
+  SIDDHA
+  SOWA_RIGPA
+  HOMOEOPATHY
+  MULTIPLE
+}
+
+enum StartupStage {
+  IDEA
+  PRE_SEED
+  EARLY_STAGE
+  GROWTH
+  ESTABLISHED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum InvestorType {
+  ANGEL
+  VENTURE_CAPITAL
+  PRIVATE_EQUITY
+  CORPORATE
+  OTHER
+}
+
+enum MentorAvailability {
+  AVAILABLE
+  BUSY
+  UNAVAILABLE
+}
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum MentorshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum ProgramStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  COMPLETED
+}
+
+enum ProgramApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ResourceCategory {
+  GOVERNMENT_SCHEME
+  FUNDING
+  REGULATORY_GUIDELINE
+  RESEARCH
+  EDUCATION
+  OTHER
+}
+
+enum EventType {
+  WEBINAR
+  WORKSHOP
+  CONFERENCE
+  NETWORKING
+  OTHER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum EventRegistrationStatus {
+  REGISTERED
+  CANCELLED
+}
+
+enum PostStatus {
+  ACTIVE
+  HIDDEN
+}
+
+enum NotificationType {
+  CONNECTION
+  MENTORSHIP
+  APPLICATION
+  EVENT
+  SYSTEM
+  OTHER
+}
+
+// ==========================================
+// USER
+// ==========================================
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Stakeholder profiles
+  startupProfile     StartupProfile?
+  investorProfile    InvestorProfile?
+  mentorProfile      MentorProfile?
+  incubatorProfile  IncubatorProfile?
+  acceleratorProfile AcceleratorProfile?
+  governmentProfile GovernmentProfile?
+
+  // Connections
+  sentConnections     ConnectionRequest[] @relation("ConnectionSender")
+  receivedConnections ConnectionRequest[] @relation("ConnectionReceiver")
+
+  // Mentorship
+  mentorshipRequestsSent     MentorshipApplication[] @relation("MentorshipApplicant")
+  mentorshipRequestsReceived MentorshipApplication[] @relation("MentorshipMentor")
+
+  // Programs
+  ownedPrograms     IncubationProgram[] @relation("ProgramOwner")
+  programApplications ProgramApplication[] @relation("StartupApplications")
+
+  // Resources
+  publishedResources Resource[] @relation("ResourcePublisher")
+
+  // Events
+  organizedEvents  Event[]             @relation("EventOrganizer")
+  eventRegistrations EventRegistration[]
+
+  // Community
+  communityPosts CommunityPost[]
+  comments       Comment[]
+
+  // Authentication
+  sessions Session[]
+
+  // Admin and notifications
+  auditLogs     AuditLog[]     @relation("AuditActor")
+  notifications Notification[]
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+// ==========================================
+// STAKEHOLDER PROFILES
+// ==========================================
+
+model StartupProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  startupName       String
+  description       String
+  category          AyushCategory
+  stage             StartupStage
+  foundedYear       Int?
+  location          String?
+  website           String?
+  productDescription String?
+  fundingRequired   Decimal? @db.Decimal(14, 2)
+  teamSize          Int?
+
+  verificationStatus VerificationStatus @default(PENDING)
+  isVisible          Boolean            @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([category, stage])
+  @@index([location])
+  @@index([verificationStatus])
+}
+
+model InvestorProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  organizationName  String
+  investorType      InvestorType
+  description       String?
+  investmentInterests String[]      @default([])
+  preferredCategories AyushCategory[] @default([])
+  preferredStages   StartupStage[] @default([])
+  minInvestment     Decimal?        @db.Decimal(14, 2)
+  maxInvestment     Decimal?        @db.Decimal(14, 2)
+  location          String?
+  website           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([investorType])
+  @@index([location])
+}
+
+model MentorProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  expertise        String[] @default([])
+  experienceYears  Int?
+  biography        String?
+  availabilityStatus MentorAvailability @default(AVAILABLE)
+  areasOfInterest  AyushCategory[] @default([])
+  location         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([availabilityStatus])
+}
+
+model IncubatorProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  organizationName  String
+  description       String
+  supportedCategories AyushCategory[] @default([])
+  location          String?
+  website           String?
+  programsOffered   String[] @default([])
+
+  verificationStatus VerificationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AcceleratorProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  organizationName String
+  description      String
+  specialization   String?
+  location         String?
+  website          String?
+  verificationStatus VerificationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GovernmentProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  departmentName String
+  designation    String?
+  description    String?
+  officialWebsite String?
+
+  verificationStatus VerificationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// CONNECTIONS
+// ==========================================
+
+model ConnectionRequest {
+  id         String           @id @default(uuid()) @db.Uuid
+  senderId   String           @db.Uuid
+  receiverId String           @db.Uuid
+  message    String?
+  status     ConnectionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sender User @relation("ConnectionSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ConnectionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@index([senderId, status])
+}
+
+// ==========================================
+// MENTORSHIP
+// ==========================================
+
+model MentorshipApplication {
+  id          String           @id @default(uuid()) @db.Uuid
+  applicantId String           @db.Uuid
+  mentorId    String           @db.Uuid
+  message     String?
+  goals       String?
+  status      MentorshipStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applicant User @relation("MentorshipApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  mentor User @relation("MentorshipMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+
+  @@index([applicantId, status])
+  @@index([mentorId, status])
+}
+
+// ==========================================
+// INCUBATION AND ACCELERATION PROGRAMS
+// ==========================================
+
+model IncubationProgram {
+  id      String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+
+  programName String
+  description String
+  eligibility String?
+  category    AyushCategory?
+  durationDays Int?
+  deadline    DateTime?
+
+  status ProgramStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  applications ProgramApplication[]
+
+  @@index([ownerId, status])
+  @@index([status, deadline])
+}
+
+model ProgramApplication {
+  id        String @id @default(uuid()) @db.Uuid
+  programId String @db.Uuid
+  startupId String @db.Uuid
+
+  message String?
+  status  ProgramApplicationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  program IncubationProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  startup User @relation("StartupApplications", fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, startupId])
+  @@index([startupId, status])
+}
+
+// ==========================================
+// RESOURCES AND GOVERNMENT SCHEMES
+// ==========================================
+
+model Resource {
+  id          String @id @default(uuid()) @db.Uuid
+  title       String
+  description String
+  category    ResourceCategory
+  sourceUrl   String
+
+  publisherId String @db.Uuid
+  publishedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  publisher User @relation("ResourcePublisher", fields: [publisherId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([publishedAt])
+}
+
+// ==========================================
+// EVENTS
+// ==========================================
+
+model Event {
+  id          String @id @default(uuid()) @db.Uuid
+  organizerId String @db.Uuid
+
+  title             String
+  description       String
+  eventType         EventType
+  location          String?
+  onlineMeetingUrl  String?
+  startDate         DateTime
+  endDate           DateTime
+  registrationDeadline DateTime?
+  capacity          Int?
+
+  status EventStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizer User @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+
+  registrations EventRegistration[]
+
+  @@index([startDate])
+  @@index([status, startDate])
+}
+
+model EventRegistration {
+  id      String @id @default(uuid()) @db.Uuid
+  eventId String @db.Uuid
+  userId  String @db.Uuid
+
+  registrationStatus EventRegistrationStatus @default(REGISTERED)
+
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId])
+}
+
+// ==========================================
+// COMMUNITY
+// ==========================================
+
+model CommunityPost {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+
+  content String
+  status  PostStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments Comment[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model Comment {
+  id     String @id @default(uuid()) @db.Uuid
+  postId String @db.Uuid
+  userId String @db.Uuid
+
+  content String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+// ==========================================
+// AUTHENTICATION SESSIONS
+// ==========================================
+
+model Session {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  tokenHash String @unique
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ==========================================
+// NOTIFICATIONS
+// ==========================================
+
+model Notification {
+  id      String @id @default(uuid()) @db.Uuid
+  userId  String @db.Uuid
+
+  title   String
+  message String
+  type    NotificationType @default(OTHER)
+
+  relatedEntityId String?
+  isRead          Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ==========================================
+// ADMIN AUDIT LOGS
+// ==========================================
+
+model AuditLog {
+  id         String @id @default(uuid()) @db.Uuid
+  actorId    String? @db.Uuid
+
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
