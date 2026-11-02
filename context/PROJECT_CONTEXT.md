@@ -534,3 +534,125 @@ Append a new entry for each meaningful work session:
 ```
 
 **End of current project context.**
+
+
+
+### Current status
+- Installed Express using `npm install express`.
+- Configured the root `index.js` as the Express application entry point.
+- Reused the existing Prisma 7 client from `database/db.js`.
+- PostgreSQL connection uses `@prisma/adapter-pg`.
+- Added JSON request parsing using `express.json()`.
+
+### API endpoints
+- `GET /` — Returns API running status.
+- `GET /api/v1/health` — Checks PostgreSQL connectivity using Prisma `$queryRaw` with `SELECT 1`.
+
+### Server configuration
+- Port: `process.env.PORT || 5000`
+- Local binding: `127.0.0.1`
+- Start command: `node index.js`
+- npm start script: `node index.js`
+
+### Server startup issue and resolution
+- Initial Express server exited immediately after printing its startup message.
+- Minimal Express-only server remained running.
+- Prisma Client and PrismaPg adapter both initialized successfully.
+- The final working setup creates the server using:
+  `const server = app.listen(PORT, "127.0.0.1");`
+- Server event listeners were added for `listening`, `error`, and `close`.
+- Explicit `server.ref()` was added to keep the server handle referenced.
+- The server now remains running with Prisma imported.
+
+### Current project structure
+- `index.js` — Express application entry point.
+- `database/db.js` — Prisma 7 client and PostgreSQL adapter setup.
+- `prisma/schema.prisma` — Database schema.
+- `prisma7.config.js` — Prisma CLI configuration.
+- `context/PROJECT_CONTEXT.md` — Technical project history and LLM context.
+- `README.md` — Human-facing project documentation.
+
+### Pending verification
+- Verify `GET /api/v1/health` returns successful database connectivity.
+- Begin the authentication module after health-check verification.
+
+### Important implementation note
+Keep the existing CommonJS module structure. Reuse the existing Prisma client rather than creating additional PrismaClient instances.
+
+
+
+---
+
+## 2026-11-14 — Express Setup and Authentication Implementation
+
+### Work completed
+- Installed Express.
+- Installed authentication dependencies: `bcryptjs`, `jsonwebtoken`, `zod`.
+- Configured root `index.js` as the Express application entry point.
+- Added JSON middleware using `express.json()`.
+- Added `GET /` root endpoint.
+- Added `GET /api/v1/health` for PostgreSQL connectivity using Prisma.
+- Mounted authentication routes at `/api/v1/auth`.
+- Resolved the Express server's immediate-exit issue using the working server startup configuration with `server.ref()`.
+
+### Existing database connection
+- Reused `database/db.js`.
+- Prisma ORM 7 with PostgreSQL adapter `@prisma/adapter-pg`.
+- No additional PrismaClient instance created.
+
+### Authentication files created
+- `modules/auth/auth.routes.js`
+- `modules/auth/auth.controller.js`
+- `modules/auth/auth.service.js`
+- `modules/auth/auth.validation.js`
+- `middleware/auth.middleware.js`
+
+### Authentication functionality implemented in code
+- Registration input validation using Zod.
+- Login input validation using Zod.
+- Password hashing using bcryptjs.
+- User registration and login using Prisma.
+- JWT generation and verification.
+- Role-based authorization middleware.
+
+### Authentication endpoints
+- POST `/api/v1/auth/register`
+- POST `/api/v1/auth/login`
+
+### Environment configuration
+Added:
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN="1d"`
+
+Important: A generated JWT secret was exposed in chat. A fresh secret must be generated and used. Never store the actual secret in this document or commit `.env`.
+
+### Current implementation status
+- Express server startup: confirmed working by user.
+- Prisma client initialization: confirmed.
+- Database health endpoint response: not yet confirmed.
+- Registration/login end-to-end testing: pending.
+- Database-backed session persistence: pending.
+- GET `/api/v1/auth/me`: pending.
+- Logout: pending.
+- Change password: pending.
+
+### Important schema alignment note
+The initial authentication implementation assumes these User fields:
+- name
+- email
+- password
+- role
+- status
+
+It also assumes the active status enum value is `ACTIVE`.
+
+These assumptions must match the saved Prisma schema before treating authentication as complete.
+
+### Next task
+Complete authentication:
+1. Database-backed sessions.
+2. GET `/api/v1/auth/me`.
+3. Logout and session invalidation.
+4. Change password.
+
+Continue using simple CommonJS code and the existing Prisma client. Avoid unnecessary files, repeated checks and duplicate implementations.
