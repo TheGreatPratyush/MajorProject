@@ -723,3 +723,99 @@ Before implementation, inspect the actual Prisma profile models and finalize the
 
 **Next action:** Review the actual profile models in `prisma/schema.prisma`, finalize the Phase 2 implementation plan, and then implement the complete module.
 
+
+## 20. Phase 2 — Stakeholder Profiles: Implementation and Test Results
+
+**Status:** Core STARTUP profile flow implemented and verified.
+
+### Files implemented
+- `modules/profiles/profiles.routes.js`
+- `modules/profiles/profiles.controller.js`
+- `modules/profiles/profiles.service.js`
+- `modules/profiles/profiles.validation.js`
+
+### Integration
+- Mounted profile routes in `index.js` at `/api/v1/profiles`.
+- Reused the existing `authenticateToken` middleware.
+- Reused the existing Prisma client from `database/db.js`.
+- No duplicate Prisma client or additional middleware was introduced.
+
+### API endpoints
+- `POST /api/v1/profiles` — create the authenticated user's stakeholder profile.
+- `GET /api/v1/profiles/me` — retrieve the authenticated user's profile.
+- `PATCH /api/v1/profiles/me` — partially update the authenticated user's profile.
+
+### Implemented behaviour
+- Stakeholder role determines the profile model used by the service.
+- `userId` is taken from the authenticated request, not from client input.
+- One profile per user is enforced by the database unique constraint.
+- Protected fields such as role, status, verification status and startup visibility cannot be changed through profile validation.
+- Investor minimum and maximum investment values are checked.
+- Profile responses include only selected safe user fields; password hashes are not returned.
+- Unsupported account roles cannot manage stakeholder profiles.
+
+### Test environment
+- Backend started on port `5001` because port `5000` was occupied by macOS AirTunes.
+- Database health endpoint returned HTTP 200.
+
+### Actual test results
+
+| Test | Expected | Actual |
+|---|---:|---:|
+| Database health | 200 | 200 |
+| Create startup profile | 201 | 201 |
+| Get own profile | 200 | 200 |
+| Update own profile | 200 | 200 |
+| Duplicate profile creation | 409 | 409 |
+| Invalid category | 400 | 400 |
+| Attempt to update protected verification field | 400 | 400 |
+| Request without authentication | 401 | 401 |
+| Logout | 200 | 200 |
+
+The tested STARTUP profile was created, retrieved and updated successfully. Duplicate creation, invalid input, protected-field modification and unauthenticated access were rejected as expected.
+
+### Test coverage limitations
+- The complete profile flow was tested using a STARTUP account.
+- INVESTOR, MENTOR, INCUBATOR, ACCELERATOR and GOVERNMENT profile flows were not yet tested.
+- Investor investment-range validation was implemented but not independently verified through an API test.
+- This is core-flow verification, not exhaustive testing of every stakeholder role or edge case.
+
+### Phase 2 conclusion
+The core stakeholder profile functionality is implemented and the STARTUP API flow passed the recorded tests. Phase 2 should be considered implemented for the tested flow, with cross-role testing remaining as a later verification task.
+
+### Git status
+Suggested commit:
+
+`git add index.js modules/profiles/`
+
+`git commit -m "feat(profiles): implement stakeholder profile management"`
+
+**Commit status:** Not confirmed. Do not mark as committed until the user provides successful Git output.
+
+---
+
+## 21. Next Phase — Phase 3: Stakeholder Directories
+
+**Proposed focus:** Public discovery and browsing of stakeholder profiles.
+
+Planned directory types:
+- Startups
+- Investors
+- Mentors
+- Incubators
+- Accelerators
+
+Phase 3 should define and implement public list and detail endpoints, search, filters, pagination, safe public response fields, and visibility/verification rules.
+
+**Important access rules to preserve:**
+- Do not expose private user or account data.
+- Do not expose password hashes, session tokens or internal audit information.
+- Startup directory results must respect `isVisible`.
+- Verification status must be considered when deciding which profiles are publicly discoverable.
+- Public directory endpoints must not allow clients to update profile data.
+- Profile ownership and editing remain governed by the authenticated profile endpoints from Phase 2.
+
+**Before implementation:** inspect the actual current repository structure and existing files, then freeze the route contract, query parameters, validation, response shape, Prisma queries and access rules. Do not start coding until this design is agreed.
+
+**Phase 3 status:** Not started.
+
