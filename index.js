@@ -5,6 +5,7 @@ const { prisma } = require("./database/db");
 const authRoutes = require("./modules/auth/auth.routes");
 const profileRoutes = require("./modules/profiles/profiles.routes");
 const directoryRoutes = require("./modules/directories/directories.routes");
+const connectionRoutes = require("./modules/connections/connections.routes");
 
 const app = express();
 
@@ -46,6 +47,9 @@ app.use("/api/v1/profiles", profileRoutes);
 
 // Public stakeholder directory routes
 app.use("/api/v1/directories", directoryRoutes);
+
+// Connection and networking routes
+app.use("/api/v1/connections", connectionRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
