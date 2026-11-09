@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 
 const express = require("express");
@@ -6,6 +7,7 @@ const authRoutes = require("./modules/auth/auth.routes");
 const profileRoutes = require("./modules/profiles/profiles.routes");
 const directoryRoutes = require("./modules/directories/directories.routes");
 const connectionRoutes = require("./modules/connections/connections.routes");
+const mentorshipRoutes = require("./modules/mentorship/mentorship.routes");
 
 const app = express();
 
@@ -50,6 +52,9 @@ app.use("/api/v1/directories", directoryRoutes);
 
 // Connection and networking routes
 app.use("/api/v1/connections", connectionRoutes);
+
+// Mentorship routes
+app.use("/api/v1/mentorship", mentorshipRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
