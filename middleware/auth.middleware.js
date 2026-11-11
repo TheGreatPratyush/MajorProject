@@ -86,6 +86,16 @@ async function authenticateToken(req, res, next) {
   }
 }
 
+async function optionalAuthenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return next();
+  }
+
+  return authenticateToken(req, res, next);
+}
+
 function authorizeRoles(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
@@ -102,5 +112,6 @@ function authorizeRoles(...allowedRoles) {
 
 module.exports = {
   authenticateToken,
+  optionalAuthenticateToken,
   authorizeRoles,
 };
