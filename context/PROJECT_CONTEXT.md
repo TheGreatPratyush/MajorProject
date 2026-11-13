@@ -656,3 +656,70 @@ Complete authentication:
 4. Change password.
 
 Continue using simple CommonJS code and the existing Prisma client. Avoid unnecessary files, repeated checks and duplicate implementations.
+ 
+
+## 20. Phase 1 — Authentication implementation and test results
+
+**Date:** 14 November 2026
+
+### Files implemented
+
+The following five existing files were implemented:
+
+1. `modules/auth/auth.validation.js`
+2. `modules/auth/auth.service.js`
+3. `middleware/auth.middleware.js`
+4. `modules/auth/auth.controller.js`
+5. `modules/auth/auth.routes.js`
+
+### Actual test results
+
+| Test | Result |
+|---|---|
+| Express root endpoint | Passed |
+| PostgreSQL health endpoint | Passed |
+| Stakeholder registration | Passed — HTTP 201 |
+| Login and JWT generation | Passed — HTTP 200 |
+| Database session creation | Passed through successful login and session validation |
+| Logout | Passed — HTTP 200 |
+| Reuse of revoked token | Passed — HTTP 401 |
+| `/me` endpoint | Not tested |
+| Change-password endpoint | Not tested |
+| Duplicate registration | Not tested |
+
+### Important implementation details
+
+- Actual User password field: `passwordHash`.
+- User status defaults to `ACTIVE`.
+- Session model fields: `id`, `userId`, `tokenHash`, `expiresAt`, `revokedAt`, `createdAt`.
+- JWT is generated with a session ID.
+- Only the SHA-256 token hash is stored in PostgreSQL.
+- Middleware checks JWT validity, database session, expiry, revocation and current user status.
+- Logout revokes the current session.
+- Password change updates the password hash and revokes all active sessions.
+- ADMIN and GOVERNMENT cannot register through public registration.
+
+### Phase 1 review
+
+The core authentication flow has been verified successfully through Postman.
+
+The `/me` and password-change endpoints have not been tested because of the limited project timeline. Their implementation is present, but they must not be described as independently verified.
+
+**Phase status:** Implemented; core flow verified; remaining endpoint tests deferred. Accepted for demo development so work can proceed to the next phase.
+
+### Next phase: Phase 2 — Stakeholder Profiles
+
+Planned scope:
+
+- Create stakeholder profiles.
+- Retrieve the logged-in user's profile.
+- Update stakeholder profiles.
+- Enforce role-to-profile matching.
+- Prevent users from editing another user's profile.
+- Prevent role changes through profile editing.
+- Return safe profile data.
+
+Before implementation, inspect the actual Prisma profile models and finalize the complete file list, endpoints, validation, permissions and database operations.
+
+**Next action:** Review the actual profile models in `prisma/schema.prisma`, finalize the Phase 2 implementation plan, and then implement the complete module.
+
