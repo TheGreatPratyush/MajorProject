@@ -1,10 +1,10 @@
-
 require("dotenv").config();
 
 const express = require("express");
 const { prisma } = require("./database/db");
 const authRoutes = require("./modules/auth/auth.routes");
 const profileRoutes = require("./modules/profiles/profiles.routes");
+const directoryRoutes = require("./modules/directories/directories.routes");
 
 const app = express();
 
@@ -43,6 +43,9 @@ app.use("/api/v1/auth", authRoutes);
 
 // Stakeholder profile routes
 app.use("/api/v1/profiles", profileRoutes);
+
+// Public stakeholder directory routes
+app.use("/api/v1/directories", directoryRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
