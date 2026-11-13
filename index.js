@@ -4,6 +4,7 @@ require("dotenv").config();
 const express = require("express");
 const { prisma } = require("./database/db");
 const authRoutes = require("./modules/auth/auth.routes");
+const profileRoutes = require("./modules/profiles/profiles.routes");
 
 const app = express();
 
@@ -39,6 +40,9 @@ app.get("/api/v1/health", async (req, res) => {
 
 // Authentication routes
 app.use("/api/v1/auth", authRoutes);
+
+// Stakeholder profile routes
+app.use("/api/v1/profiles", profileRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
