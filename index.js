@@ -1,0 +1,61 @@
+
+require("dotenv").config();
+
+const express = require("express");
+const { prisma } = require("./database/db");
+const authRoutes = require("./modules/auth/auth.routes");
+
+const app = express();
+
+// Middleware
+app.use(express.json());
+
+// Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Startup-AYUSH API running",
+  });
+});
+
+// Database health check
+app.get("/api/v1/health", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+
+    res.json({
+      success: true,
+      message: "Database connected",
+    });
+  } catch (error) {
+    console.error("Database health check failed:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+    });
+  }
+});
+
+// Authentication routes
+app.use("/api/v1/auth", authRoutes);
+
+// Server configuration
+const PORT = process.env.PORT || 5000;
+
+const server = app.listen(PORT, "127.0.0.1");
+
+server.on("listening", () => {
+  console.log(`Server running at http://127.0.0.1:${PORT}`);
+});
+
+server.on("error", (error) => {
+  console.error("Server error:", error.message);
+});
+
+server.on("close", () => {
+  console.log("Server closed unexpectedly");
+});
+
+// Keep the server active
+server.ref();
