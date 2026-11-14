@@ -13,6 +13,7 @@ const programsRoutes = require("./modules/programs/programs.routes");
 const resourcesRoutes = require("./modules/resources/resources.routes");
 const eventsRoutes = require("./modules/events/events.routes");
 const communityRoutes = require("./modules/community/community.routes");
+const notificationRoutes = require("./modules/notifications/notifications.routes");
 
 const app = express();
 
@@ -70,6 +71,9 @@ app.use("/api/v1/resources", resourcesRoutes);
 // Events and community
 app.use("/api/v1/events", eventsRoutes);
 app.use("/api/v1/community", communityRoutes);
+
+// Notifications (Phase 10)
+app.use("/api/v1/notifications", notificationRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
