@@ -3,11 +3,13 @@ require("dotenv").config();
 
 const express = require("express");
 const { prisma } = require("./database/db");
+
 const authRoutes = require("./modules/auth/auth.routes");
 const profileRoutes = require("./modules/profiles/profiles.routes");
 const directoryRoutes = require("./modules/directories/directories.routes");
 const connectionRoutes = require("./modules/connections/connections.routes");
 const mentorshipRoutes = require("./modules/mentorship/mentorship.routes");
+const programsRoutes = require("./modules/programs/programs.routes");
 
 const app = express();
 
@@ -55,6 +57,9 @@ app.use("/api/v1/connections", connectionRoutes);
 
 // Mentorship routes
 app.use("/api/v1/mentorship", mentorshipRoutes);
+
+// Incubation programs and applications
+app.use("/api/v1/programs", programsRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
