@@ -14,6 +14,7 @@ const resourcesRoutes = require("./modules/resources/resources.routes");
 const eventsRoutes = require("./modules/events/events.routes");
 const communityRoutes = require("./modules/community/community.routes");
 const notificationRoutes = require("./modules/notifications/notifications.routes");
+const dashboardRoutes = require("./modules/dashboard/dashboard.routes");
 
 const app = express();
 
@@ -74,6 +75,7 @@ app.use("/api/v1/community", communityRoutes);
 
 // Notifications (Phase 10)
 app.use("/api/v1/notifications", notificationRoutes);
+app.use("/api/v1/dashboard", dashboardRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;

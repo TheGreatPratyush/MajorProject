@@ -53,3 +53,15 @@ test("internal notification payload is validated", () => {
   assert.equal(schema.safeParse({ ...valid, relatedEntityId: "not-a-uuid" }).success, false);
   assert.equal(schema.safeParse({ ...valid, isRead: true }).success, false);
 });
+
+const dashboard = require("../modules/dashboard/dashboard.validation");
+
+test("dashboard activity query applies default and bounds", () => {
+  const schema = dashboard.activityQuerySchema;
+  assert.deepEqual(schema.parse({}), { limit: 10 });
+  assert.deepEqual(schema.parse({ limit: "50" }), { limit: 50 });
+  assert.equal(schema.safeParse({ limit: "0" }).success, false);
+  assert.equal(schema.safeParse({ limit: "51" }).success, false);
+  assert.equal(schema.safeParse({ limit: "abc" }).success, false);
+  assert.equal(schema.safeParse({ page: "1" }).success, false);
+});
