@@ -10,6 +10,9 @@ const directoryRoutes = require("./modules/directories/directories.routes");
 const connectionRoutes = require("./modules/connections/connections.routes");
 const mentorshipRoutes = require("./modules/mentorship/mentorship.routes");
 const programsRoutes = require("./modules/programs/programs.routes");
+const resourcesRoutes = require("./modules/resources/resources.routes");
+const eventsRoutes = require("./modules/events/events.routes");
+const communityRoutes = require("./modules/community/community.routes");
 
 const app = express();
 
@@ -60,6 +63,13 @@ app.use("/api/v1/mentorship", mentorshipRoutes);
 
 // Incubation programs and applications
 app.use("/api/v1/programs", programsRoutes);
+
+// Public resources and government schemes
+app.use("/api/v1/resources", resourcesRoutes);
+
+// Events and community
+app.use("/api/v1/events", eventsRoutes);
+app.use("/api/v1/community", communityRoutes);
 
 // Server configuration
 const PORT = process.env.PORT || 5000;
