@@ -200,15 +200,64 @@ async function getSummary(user) {
 // ------------------------------------------
 // Activity feed
 // ------------------------------------------
-// Each source returns at most `limit` rows; the merged list is sorted
-// and trimmed, so the result is the caller's `limit` latest records.
+// The feed merges four tables. Every table and the merged list use the
+// same order (newest first, then id), so the newest page * limit rows of
+// each table always contain every record of the requested page.
+// MAX_ACTIVITY_DEPTH (validation) bounds page * limit.
 
-async function getActivity(user, { limit }) {
+function getPaginationMeta(page, limit, total) {
+  return {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+// Plain code-point comparison matches PostgreSQL's ordering of UUIDs.
+function compareActivity(a, b) {
+  const byTime = b.updatedAt - a.updatedAt;
+
+  if (byTime !== 0) {
+    return byTime;
+  }
+
+  if (a.id === b.id) {
+    return 0;
+  }
+
+  return a.id < b.id ? -1 : 1;
+}
+
+async function getActivity(user, { page, limit }) {
   assertDashboardRole(user);
 
-  const [connections, mentorships, applications, registrations] = await Promise.all([
+  const depth = page * limit;
+  const where = {
+    connection: { OR: [{ senderId: user.id }, { receiverId: user.id }] },
+    mentorship: { OR: [{ applicantId: user.id }, { mentorId: user.id }] },
+    application: { OR: [{ startupId: user.id }, { program: { ownerId: user.id } }] },
+    registration: { userId: user.id },
+  };
+
+  // One batch on one connection: the totals and rows come from the same
+  // transaction, so they agree with each other.
+  const [
+    connectionTotal,
+    mentorshipTotal,
+    applicationTotal,
+    registrationTotal,
+    connections,
+    mentorships,
+    applications,
+    registrations,
+  ] = await prisma.$transaction([
+    prisma.connectionRequest.count({ where: where.connection }),
+    prisma.mentorshipApplication.count({ where: where.mentorship }),
+    prisma.programApplication.count({ where: where.application }),
+    prisma.eventRegistration.count({ where: where.registration }),
     prisma.connectionRequest.findMany({
-      where: { OR: [{ senderId: user.id }, { receiverId: user.id }] },
+      where: where.connection,
       select: {
         id: true,
         status: true,
@@ -217,11 +266,11 @@ async function getActivity(user, { limit }) {
         sender: { select: USER_SUMMARY },
         receiver: { select: USER_SUMMARY },
       },
-      orderBy: { updatedAt: "desc" },
-      take: limit,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: depth,
     }),
     prisma.mentorshipApplication.findMany({
-      where: { OR: [{ applicantId: user.id }, { mentorId: user.id }] },
+      where: where.mentorship,
       select: {
         id: true,
         status: true,
@@ -230,11 +279,11 @@ async function getActivity(user, { limit }) {
         applicant: { select: USER_SUMMARY },
         mentor: { select: USER_SUMMARY },
       },
-      orderBy: { updatedAt: "desc" },
-      take: limit,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: depth,
     }),
     prisma.programApplication.findMany({
-      where: { OR: [{ startupId: user.id }, { program: { ownerId: user.id } }] },
+      where: where.application,
       select: {
         id: true,
         status: true,
@@ -243,20 +292,20 @@ async function getActivity(user, { limit }) {
         startup: { select: USER_SUMMARY },
         program: { select: { programName: true, owner: { select: USER_SUMMARY } } },
       },
-      orderBy: { updatedAt: "desc" },
-      take: limit,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: depth,
     }),
     // EventRegistration has no updatedAt column, so createdAt is used.
     prisma.eventRegistration.findMany({
-      where: { userId: user.id },
+      where: where.registration,
       select: {
         id: true,
         registrationStatus: true,
         createdAt: true,
         event: { select: { title: true, organizer: { select: USER_SUMMARY } } },
       },
-      orderBy: { createdAt: "desc" },
-      take: limit,
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: depth,
     }),
   ]);
 
@@ -301,11 +350,14 @@ async function getActivity(user, { limit }) {
     })),
   ];
 
-  items.sort(
-    (a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
-  );
+  items.sort(compareActivity);
 
-  return { items: items.slice(0, limit) };
+  const total = connectionTotal + mentorshipTotal + applicationTotal + registrationTotal;
+
+  return {
+    items: items.slice((page - 1) * limit, depth),
+    meta: getPaginationMeta(page, limit, total),
+  };
 }
 
 module.exports = {

@@ -59,7 +59,7 @@ async function getActivity(req, res) {
       success: true,
       message: "Dashboard activity retrieved successfully.",
       data: { items: result.items },
-      meta: null,
+      meta: result.meta,
     });
   } catch (error) {
     return handleError(res, error);

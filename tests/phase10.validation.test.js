@@ -56,12 +56,26 @@ test("internal notification payload is validated", () => {
 
 const dashboard = require("../modules/dashboard/dashboard.validation");
 
-test("dashboard activity query applies default and bounds", () => {
+test("dashboard activity query applies defaults and bounds", () => {
   const schema = dashboard.activityQuerySchema;
-  assert.deepEqual(schema.parse({}), { limit: 10 });
-  assert.deepEqual(schema.parse({ limit: "50" }), { limit: 50 });
+  assert.deepEqual(schema.parse({}), { page: 1, limit: 10 });
+  assert.deepEqual(schema.parse({ page: "2", limit: "50" }), { page: 2, limit: 50 });
   assert.equal(schema.safeParse({ limit: "0" }).success, false);
   assert.equal(schema.safeParse({ limit: "51" }).success, false);
   assert.equal(schema.safeParse({ limit: "abc" }).success, false);
-  assert.equal(schema.safeParse({ page: "1" }).success, false);
+  assert.equal(schema.safeParse({ page: "0" }).success, false);
+  assert.equal(schema.safeParse({ page: "1.5" }).success, false);
+  assert.equal(schema.safeParse({ userId: "x" }).success, false);
+});
+
+test("dashboard activity depth is capped at page * limit", () => {
+  const schema = dashboard.activityQuerySchema;
+  const max = dashboard.MAX_ACTIVITY_DEPTH;
+  assert.equal(max, 500);
+  assert.equal(schema.safeParse({ page: "10", limit: "50" }).success, true);
+  assert.equal(schema.safeParse({ page: "500", limit: "1" }).success, true);
+
+  const tooDeep = schema.safeParse({ page: "11", limit: "50" });
+  assert.equal(tooDeep.success, false);
+  assert.deepEqual(tooDeep.error.issues.map((issue) => issue.path.join(".")), ["page"]);
 });

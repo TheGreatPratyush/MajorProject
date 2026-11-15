@@ -150,6 +150,8 @@ async function seed() {
     },
   });
 
+  ids.liveEvent = liveEvent.id;
+
   ids.regLive = (await prisma.eventRegistration.create({
     data: { eventId: liveEvent.id, userId: startup.id, createdAt: t(5) },
   })).id;
@@ -276,7 +278,7 @@ async function activityTests() {
 
   const a = await request("/dashboard/activity", startup.token);
   expectStatus(a, 200);
-  assert.equal(a.body.meta, null);
+  assert.deepEqual(a.body.meta, { page: 1, limit: 10, total: 6, totalPages: 1 });
 
   const items = a.body.data.items;
   assert.deepEqual(items.map((x) => [x.kind, x.id]), [
@@ -307,12 +309,35 @@ async function activityTests() {
   assert.deepEqual(byId[ids.regLive].counterpart, summary(government));
   assert.equal(byId[ids.regLive].updatedAt, t(5).toISOString());
 
-  // Limit keeps the newest records.
+  // Pages are taken from the merged, newest-first list.
+  const fullOrder = items.map((x) => x.id);
   const limited = await request("/dashboard/activity?limit=2", startup.token);
   assert.deepEqual(limited.body.data.items.map((x) => x.id), [ids.regCancelled, ids.regLive]);
+  assert.deepEqual(limited.body.meta, { page: 1, limit: 2, total: 6, totalPages: 3 });
+
+  const pageTwo = await request("/dashboard/activity?page=2&limit=2", startup.token);
+  assert.deepEqual(pageTwo.body.data.items.map((x) => x.id), [ids.application, ids.mentorship]);
+  assert.deepEqual(pageTwo.body.meta, { page: 2, limit: 2, total: 6, totalPages: 3 });
+
+  // Walking one item per page reproduces the full list exactly once,
+  // including where records from different tables interleave.
+  const walked = [];
+  for (let page = 1; page <= 6; page += 1) {
+    const result = await request(`/dashboard/activity?page=${page}&limit=1`, startup.token);
+    walked.push(...result.body.data.items.map((x) => x.id));
+  }
+  assert.deepEqual(walked, fullOrder);
+
+  // Past the last page: empty items, real totals.
+  const pastEnd = await request("/dashboard/activity?page=4&limit=2", startup.token);
+  expectStatus(pastEnd, 200);
+  assert.deepEqual(pastEnd.body.data.items, []);
+  assert.deepEqual(pastEnd.body.meta, { page: 4, limit: 2, total: 6, totalPages: 3 });
 
   expectStatus(await request("/dashboard/activity?limit=0", startup.token), 400);
   expectStatus(await request("/dashboard/activity?limit=51", startup.token), 400);
+  expectStatus(await request("/dashboard/activity?page=0", startup.token), 400);
+  expectStatus(await request("/dashboard/activity?page=11&limit=50", startup.token), 400);
   expectStatus(await request("/dashboard/activity?userId=x", startup.token), 400);
 
   // Other roles see only records they are part of, from their own side.
@@ -331,7 +356,33 @@ async function activityTests() {
   assert.deepEqual(investorFeed.map((x) => [x.id, x.title]), [[ids.connSent, "Connection request received"]]);
 
   // Organizing an event is not a registration; no records means an empty feed.
-  assert.deepEqual((await request("/dashboard/activity", government.token)).body.data.items, []);
+  // Records from different tables with the same timestamp are ordered by
+  // id, and paging through them never skips or repeats one.
+  const sameTime = t(7);
+  const tieIds = [
+    (await prisma.connectionRequest.create({
+      data: { senderId: users.tieA.id, receiverId: users.tieB.id, createdAt: sameTime, updatedAt: sameTime },
+    })).id,
+    (await prisma.connectionRequest.create({
+      data: { senderId: users.tieB.id, receiverId: users.tieA.id, createdAt: sameTime, updatedAt: sameTime },
+    })).id,
+    (await prisma.eventRegistration.create({
+      data: { eventId: ids.liveEvent, userId: users.tieA.id, createdAt: sameTime },
+    })).id,
+  ].sort();
+
+  const tieFeed = await request("/dashboard/activity", users.tieA.token);
+  assert.deepEqual(tieFeed.body.data.items.map((x) => x.id), tieIds);
+  const tieWalk = [];
+  for (let page = 1; page <= 3; page += 1) {
+    const result = await request(`/dashboard/activity?page=${page}&limit=1`, users.tieA.token);
+    tieWalk.push(...result.body.data.items.map((x) => x.id));
+  }
+  assert.deepEqual(tieWalk, tieIds);
+
+  const governmentFeed = await request("/dashboard/activity", government.token);
+  assert.deepEqual(governmentFeed.body.data.items, []);
+  assert.deepEqual(governmentFeed.body.meta, { page: 1, limit: 10, total: 0, totalPages: 0 });
   assert.deepEqual((await request("/dashboard/activity", publicUser.token)).body.data.items, []);
 }
 
@@ -348,6 +399,8 @@ test("Phase 10 dashboard integration", { timeout: 60000 }, async (t) => {
     await createUser("government", "GOVERNMENT");
     await createUser("publicUser", "PUBLIC");
     await createUser("admin", "ADMIN");
+    await createUser("tieA", "PUBLIC");
+    await createUser("tieB", "PUBLIC");
     await seed();
 
     await t.test("dashboard summary", summaryTests);
