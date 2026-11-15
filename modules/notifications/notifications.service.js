@@ -76,20 +76,22 @@ async function getUnreadCount(user) {
 
 // Idempotent: marking an already-read notification succeeds.
 // Another user's notification is reported as "not found".
+// A single update (filtered by owner) avoids a gap between the
+// ownership check and reading the row back.
 async function markAsRead(user, id) {
-  const result = await prisma.notification.updateMany({
-    where: { id, userId: user.id },
-    data: { isRead: true },
-  });
+  try {
+    return await prisma.notification.update({
+      where: { id, userId: user.id },
+      data: { isRead: true },
+      select: NOTIFICATION_SELECT,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      throwError(404, "Notification not found.");
+    }
 
-  if (result.count !== 1) {
-    throwError(404, "Notification not found.");
+    throw error;
   }
-
-  return prisma.notification.findUnique({
-    where: { id },
-    select: NOTIFICATION_SELECT,
-  });
 }
 
 async function markAllAsRead(user) {
