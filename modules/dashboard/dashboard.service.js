@@ -36,14 +36,8 @@ function assertDashboardRole(user) {
   }
 }
 
-// Returns every enum value as a key, with 0 where there are no rows.
-async function countByStatus(model, field, where, enumObject) {
-  const groups = await prisma[model].groupBy({
-    by: [field],
-    where,
-    _count: { _all: true },
-  });
-
+// Builds { VALUE: count } with every enum value present (0 by default).
+function toByStatus(groups, field, enumObject) {
   const result = Object.fromEntries(
     Object.values(enumObject).map((value) => [value, 0])
   );
@@ -55,105 +49,104 @@ async function countByStatus(model, field, where, enumObject) {
   return result;
 }
 
-async function getProfile(user) {
+// A metric is a query plus how to turn its result into the response value.
+function count(model, where) {
+  return { query: prisma[model].count({ where }), format: (value) => value };
+}
+
+function byStatus(model, field, where, enumObject) {
+  return {
+    query: prisma[model].groupBy({ by: [field], where, _count: { _all: true } }),
+    format: (groups) => toByStatus(groups, field, enumObject),
+  };
+}
+
+function profileMetric(user) {
   const config = PROFILE_MODELS[user.role];
 
   if (!config) {
-    return { exists: false, verificationStatus: null };
+    return null;
   }
 
-  const profile = await prisma[config.model].findUnique({
-    where: { userId: user.id },
-    select: config.hasVerification
-      ? { id: true, verificationStatus: true }
-      : { id: true },
-  });
-
   return {
-    exists: Boolean(profile),
-    verificationStatus: profile?.verificationStatus ?? null,
+    query: prisma[config.model].findUnique({
+      where: { userId: user.id },
+      select: config.hasVerification
+        ? { id: true, verificationStatus: true }
+        : { id: true },
+    }),
+    format: (profile) => ({
+      exists: Boolean(profile),
+      verificationStatus: profile?.verificationStatus ?? null,
+    }),
   };
 }
 
-async function getCommonMetrics(user) {
-  const [unread, pendingReceived, pendingSent, accepted, activeRegistrations, posts] =
-    await Promise.all([
-      prisma.notification.count({ where: { userId: user.id, isRead: false } }),
-      prisma.connectionRequest.count({
-        where: { receiverId: user.id, status: ConnectionStatus.PENDING },
-      }),
-      prisma.connectionRequest.count({
-        where: { senderId: user.id, status: ConnectionStatus.PENDING },
-      }),
-      prisma.connectionRequest.count({
-        where: {
-          status: ConnectionStatus.ACCEPTED,
-          OR: [{ senderId: user.id }, { receiverId: user.id }],
-        },
-      }),
-      // Active = still registered for a published event that has not ended.
-      prisma.eventRegistration.count({
-        where: {
-          userId: user.id,
-          registrationStatus: "REGISTERED",
-          event: { status: EventStatus.PUBLISHED, endDate: { gte: new Date() } },
-        },
-      }),
-      prisma.communityPost.count({ where: { userId: user.id, status: "ACTIVE" } }),
-    ]);
-
+function commonMetrics(user) {
   return {
-    notifications: { unread },
-    connections: { pendingReceived, pendingSent, accepted },
-    events: { activeRegistrations },
-    community: { posts },
+    "notifications.unread": count("notification", { userId: user.id, isRead: false }),
+    "connections.pendingReceived": count("connectionRequest", {
+      receiverId: user.id,
+      status: ConnectionStatus.PENDING,
+    }),
+    "connections.pendingSent": count("connectionRequest", {
+      senderId: user.id,
+      status: ConnectionStatus.PENDING,
+    }),
+    "connections.accepted": count("connectionRequest", {
+      status: ConnectionStatus.ACCEPTED,
+      OR: [{ senderId: user.id }, { receiverId: user.id }],
+    }),
+    // Active = still registered for a published event that has not ended.
+    "events.activeRegistrations": count("eventRegistration", {
+      userId: user.id,
+      registrationStatus: "REGISTERED",
+      event: { status: EventStatus.PUBLISHED, endDate: { gte: new Date() } },
+    }),
+    "community.posts": count("communityPost", { userId: user.id, status: "ACTIVE" }),
   };
 }
 
-async function getRoleMetrics(user) {
+function roleMetrics(user) {
   switch (user.role) {
-    case "STARTUP": {
-      const [applications, mentorshipSent] = await Promise.all([
-        countByStatus("programApplication", "status", { startupId: user.id }, ProgramApplicationStatus),
-        countByStatus("mentorshipApplication", "status", { applicantId: user.id }, MentorshipStatus),
-      ]);
+    case "STARTUP":
       return {
-        programApplications: { byStatus: applications },
-        mentorship: { sent: { byStatus: mentorshipSent } },
+        "programApplications.byStatus": byStatus(
+          "programApplication", "status", { startupId: user.id }, ProgramApplicationStatus
+        ),
+        "mentorship.sent.byStatus": byStatus(
+          "mentorshipApplication", "status", { applicantId: user.id }, MentorshipStatus
+        ),
       };
-    }
 
-    case "MENTOR": {
-      const received = await countByStatus(
-        "mentorshipApplication", "status", { mentorId: user.id }, MentorshipStatus
-      );
-      return { mentorship: { received: { byStatus: received } } };
-    }
+    case "MENTOR":
+      return {
+        "mentorship.received.byStatus": byStatus(
+          "mentorshipApplication", "status", { mentorId: user.id }, MentorshipStatus
+        ),
+      };
 
     case "INCUBATOR":
-    case "ACCELERATOR": {
-      const [programs, received, events] = await Promise.all([
-        countByStatus("incubationProgram", "status", { ownerId: user.id }, ProgramStatus),
-        countByStatus("programApplication", "status", { program: { ownerId: user.id } }, ProgramApplicationStatus),
-        countByStatus("event", "status", { organizerId: user.id }, EventStatus),
-      ]);
+    case "ACCELERATOR":
       return {
-        programs: { byStatus: programs },
-        programApplications: { received: { byStatus: received } },
-        organizedEvents: { byStatus: events },
+        "programs.byStatus": byStatus(
+          "incubationProgram", "status", { ownerId: user.id }, ProgramStatus
+        ),
+        "programApplications.received.byStatus": byStatus(
+          "programApplication", "status", { program: { ownerId: user.id } }, ProgramApplicationStatus
+        ),
+        "organizedEvents.byStatus": byStatus(
+          "event", "status", { organizerId: user.id }, EventStatus
+        ),
       };
-    }
 
-    case "GOVERNMENT": {
-      const [published, events] = await Promise.all([
-        prisma.resource.count({ where: { publisherId: user.id } }),
-        countByStatus("event", "status", { organizerId: user.id }, EventStatus),
-      ]);
+    case "GOVERNMENT":
       return {
-        resources: { published },
-        organizedEvents: { byStatus: events },
+        "resources.published": count("resource", { publisherId: user.id }),
+        "organizedEvents.byStatus": byStatus(
+          "event", "status", { organizerId: user.id }, EventStatus
+        ),
       };
-    }
 
     default:
       // INVESTOR and PUBLIC only have the common block.
@@ -161,20 +154,47 @@ async function getRoleMetrics(user) {
   }
 }
 
+// Writes value into target at a dotted path, e.g. "connections.accepted".
+function setPath(target, path, value) {
+  const keys = path.split(".");
+  let node = target;
+
+  for (const key of keys.slice(0, -1)) {
+    node[key] = node[key] || {};
+    node = node[key];
+  }
+
+  node[keys[keys.length - 1]] = value;
+}
+
 async function getSummary(user) {
   assertDashboardRole(user);
 
-  const [profile, common, roleMetrics] = await Promise.all([
-    getProfile(user),
-    getCommonMetrics(user),
-    getRoleMetrics(user),
-  ]);
+  const profile = profileMetric(user);
+  const metrics = Object.entries({ ...commonMetrics(user), ...roleMetrics(user) });
+  const entries = profile ? [["profile", profile], ...metrics] : metrics;
 
-  return {
+  // One batch on a single connection (and one consistent transaction),
+  // instead of up to ten parallel queries holding the connection pool.
+  const results = await prisma.$transaction(entries.map(([, metric]) => metric.query));
+
+  const summary = {
     role: user.role,
-    profile,
-    metrics: { ...common, ...roleMetrics },
+    profile: { exists: false, verificationStatus: null },
+    metrics: {},
   };
+
+  entries.forEach(([path, metric], index) => {
+    const value = metric.format(results[index]);
+
+    if (path === "profile") {
+      summary.profile = value;
+    } else {
+      setPath(summary.metrics, path, value);
+    }
+  });
+
+  return summary;
 }
 
 // ------------------------------------------

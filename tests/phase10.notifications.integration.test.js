@@ -182,6 +182,19 @@ async function apiTests() {
   const byType = await request("/notifications?type=EVENT", { token: users.owner.token });
   assert.deepEqual(byType.body.data.items.map((n) => n.id), [thirdId]);
 
+  // A page past the end is empty but still reports the real total.
+  const pastEnd = await request("/notifications?page=5&limit=2", { token: users.owner.token });
+  expectStatus(pastEnd, 200);
+  assert.deepEqual(pastEnd.body.data.items, []);
+  assert.deepEqual(pastEnd.body.meta, { page: 5, limit: 2, total: 3, totalPages: 2 });
+
+  // Filters combine (type AND isRead).
+  const combined = await request("/notifications?type=MENTORSHIP&isRead=false", { token: users.owner.token });
+  assert.deepEqual(combined.body.data.items.map((n) => n.id), [secondId]);
+  const noMatch = await request("/notifications?type=MENTORSHIP&isRead=true", { token: users.owner.token });
+  assert.deepEqual(noMatch.body.data.items, []);
+  assert.equal(noMatch.body.meta.total, 0);
+
   // Validation errors.
   expectStatus(await request("/notifications?isRead=yes", { token: users.owner.token }), 400);
   expectStatus(await request("/notifications?userId=x", { token: users.owner.token }), 400);
