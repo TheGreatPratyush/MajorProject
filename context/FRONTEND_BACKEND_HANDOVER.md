@@ -5,7 +5,8 @@
 **Document type:** Repository onboarding and implementation guide\
 **Audience:** Frontend developer joining the existing project\
 **Project status:** Backend Phases 0--8 implemented to varying levels of
-verification; Phases 9--11 pending\
+verification; Phase 10 read APIs implemented (notification triggers
+pending); Phases 9 and 11 pending\
 **Current local backend API base:** `http://localhost:5001/api/v1`\
 **Frontend stack:** React, Vite, JavaScript, Tailwind CSS, shadcn/ui,
 Recharts\
@@ -1276,7 +1277,10 @@ only after the backend contract is supplied.
 
   9                       Admin/verification/moderation          Pending
 
-  10                      Dashboards/notifications               Pending
+  10                      Dashboards/notifications               Read APIs
+                                                                 implemented and
+                                                                 tested; triggers
+                                                                 pending approval
 
   11                      Regression/docs/hardening/deployment   Pending
   --------------------------------------------------------------------------------------
@@ -1381,16 +1385,26 @@ Planned area:
 The exact UI/API contract must be agreed when backend Phase 9 is
 implemented.
 
-## 10.6 Phase 10 --- pending
+## 10.6 Phase 10 --- read APIs implemented
 
-Planned area:
+Implemented and covered by `tests/phase10.*.test.js`:
 
--   Role-specific dashboard aggregation.
--   Notifications.
--   Notification read/unread behavior.
--   Related notification workflows.
+-   `GET /dashboard/summary`: role-specific counts from existing tables.
+-   `GET /dashboard/activity`: paginated feed of the caller's
+    connections, mentorship requests, program applications and event
+    registrations.
+-   `/notifications`: list, unread count, mark one or all as read,
+    delete. Every query is scoped to the signed-in user.
 
-Do not display fabricated dashboard metrics or notifications.
+Still pending:
+
+-   Notification triggers. No Phase 4--8 action creates notifications
+    yet, so lists stay empty until the lead approves the trigger rules.
+-   The ADMIN dashboard. ADMIN receives `403` until Phase 9 provides
+    it.
+
+Field-level contract: Appendix C. Do not display fabricated dashboard
+metrics or notifications.
 
 ## 10.7 Phase 11 --- pending
 
@@ -1724,7 +1738,7 @@ Backend development continues in parallel on:
 
 -   Remaining Phase 8 edge-case tests.
 -   Phase 9 admin, verification and moderation.
--   Phase 10 dashboards and notifications.
+-   Phase 10 notification triggers.
 -   Phase 11 full regression, documentation, security and deployment.
 
 The frontend developer should not wait for Phases 9--11 to begin. Pages
@@ -1875,6 +1889,159 @@ GOVERNMENT
 PUBLIC
 ADMIN
 ```
+
+# Appendix C --- Phase 10 API reference
+
+All paths are relative to `http://localhost:5001/api/v1`. Every route
+requires `Authorization: Bearer <token>` (401 without a valid session).
+Responses use the standard envelope from section 8.1. Lists return
+`data: { items }` and `meta: { page, limit, total, totalPages }`.
+
+## C.1 Notifications --- `/notifications`
+
+Authorization: any signed-in role. Every query is filtered by the
+caller's user id. Another user's notification returns `404`, never
+`403`.
+
+``` text
+GET     /notifications                 list (newest first)
+GET     /notifications/unread-count    { count }
+PATCH   /notifications/read-all        { updated }
+PATCH   /notifications/:id/read        the updated notification
+DELETE  /notifications/:id             { id }
+```
+
+`GET /notifications` query (unknown parameters return `400`):
+
+  Parameter   Type                Default   Meaning
+  ----------- ------------------- --------- -------------------------------
+  `page`      integer >= 1        1         Page number
+  `limit`     integer 1--100      10        Items per page
+  `isRead`    `true` / `false`    ---       Filter by read state
+  `type`      `NotificationType`  ---       Filter by notification type
+
+Notification item:
+
+  Field               Type              Meaning / source
+  ------------------- ----------------- --------------------------------------
+  `id`                UUID              `Notification.id`
+  `title`             string            Short heading, max 150 characters
+  `message`           string            Body text, max 1000 characters
+  `type`              enum              `NotificationType` (below)
+  `relatedEntityId`   UUID or `null`    Id of the connection, application or
+                                        event the notification refers to
+  `isRead`            boolean           `false` until marked read
+  `createdAt`         ISO date-time     When the notification was created
+
+`userId` is never returned. `:id` must be a UUID (`400` otherwise).
+Marking an already-read notification as read succeeds and changes
+nothing. `read-all` returns the number of rows changed. Delete is
+permanent.
+
+`NotificationType`: `CONNECTION`, `MENTORSHIP`, `APPLICATION`, `EVENT`,
+`SYSTEM`, `OTHER`.
+
+## C.2 Dashboard summary --- `GET /dashboard/summary`
+
+Authorization: every role except ADMIN, which gets `403` ("Admin
+dashboard is provided by Phase 9."). Each count covers only the
+caller's own records.
+
+``` json
+{
+  "role": "STARTUP",
+  "profile": { "exists": true, "verificationStatus": "VERIFIED" },
+  "metrics": { "notifications": { "unread": 0 }, "...": "..." }
+}
+```
+
+  Field                         Meaning / source
+  ----------------------------- -------------------------------------------
+  `role`                        Caller's `UserRole`
+  `profile.exists`              Whether the caller has a profile for their
+                                role
+  `profile.verificationStatus`  `PENDING` / `VERIFIED` / `REJECTED`; `null`
+                                for INVESTOR, MENTOR, PUBLIC or no profile
+
+Metrics returned for every role:
+
+  Metric                          Source and rule
+  ------------------------------- -------------------------------------------
+  `notifications.unread`          Caller's notifications with `isRead=false`
+  `connections.pendingReceived`   `PENDING` requests where caller is receiver
+  `connections.pendingSent`       `PENDING` requests where caller is sender
+  `connections.accepted`          `ACCEPTED` requests on either side
+  `events.activeRegistrations`    `REGISTERED` registrations for a
+                                  `PUBLISHED` event whose `endDate` has not
+                                  passed
+  `community.posts`               Caller's `ACTIVE` community posts
+
+Role-specific metrics:
+
+  Role                     Metric                                     Source
+  ------------------------ ------------------------------------------ ------------------------------
+  STARTUP                  `programApplications.byStatus`             Applications the startup made
+  STARTUP                  `mentorship.sent.byStatus`                 Mentorship requests it sent
+  MENTOR                   `mentorship.received.byStatus`             Requests addressed to the
+                                                                      mentor
+  INCUBATOR, ACCELERATOR   `programs.byStatus`                        Programs the caller owns
+  INCUBATOR, ACCELERATOR   `programApplications.received.byStatus`    Applications to those programs
+  INCUBATOR, ACCELERATOR   `organizedEvents.byStatus`                 Events the caller organizes
+  GOVERNMENT               `resources.published`                      Resources the caller published
+  GOVERNMENT               `organizedEvents.byStatus`                 Events the caller organizes
+
+INVESTOR and PUBLIC receive only the common metrics. Every `byStatus`
+object lists all values of its enum, with `0` where there are no rows:
+
+-   Program applications: `PENDING`, `ACCEPTED`, `REJECTED`, `WITHDRAWN`.
+-   Mentorship: `PENDING`, `ACCEPTED`, `REJECTED`, `CANCELLED`,
+    `COMPLETED`.
+-   Programs: `DRAFT`, `PUBLISHED`, `CLOSED`, `COMPLETED`.
+-   Events: `DRAFT`, `PUBLISHED`, `CANCELLED`, `COMPLETED`.
+
+## C.3 Dashboard activity --- `GET /dashboard/activity`
+
+Authorization: every role except ADMIN (`403`). The feed contains only
+records the caller takes part in.
+
+  Parameter   Type           Default   Rule
+  ----------- -------------- --------- --------------------------------
+  `page`      integer >= 1   1         `page * limit` must be <= 500
+  `limit`     integer 1--50  10        Items per page
+
+Unknown parameters return `400`. A page past the end returns an empty
+`items` array with the correct `meta.total`.
+
+Activity item:
+
+  Field           Type                       Meaning / source
+  --------------- -------------------------- ---------------------------------
+  `kind`          enum                       `CONNECTION`, `MENTORSHIP`,
+                                             `PROGRAM_APPLICATION` or
+                                             `EVENT_REGISTRATION`
+  `id`            UUID                       Id of the source record
+  `status`        string                     The record's own status enum
+  `title`         string                     "Connection request
+                                             sent/received", "Mentorship
+                                             request sent/received", the
+                                             program name or the event title
+  `counterpart`   `{ id, name, role }`       The other user: receiver or
+                                             sender, mentor or applicant,
+                                             program owner or startup, event
+                                             organizer
+  `updatedAt`     ISO date-time              Record's `updatedAt`; for event
+                                             registrations, `createdAt`
+
+Included records:
+
+-   Connections where the caller is sender or receiver.
+-   Mentorship requests where the caller is applicant or mentor.
+-   Program applications the caller made, or that were made to the
+    caller's programs.
+-   The caller's own event registrations.
+
+Ordered newest first. Records with the same timestamp are ordered by
+`id`, so pages never overlap or skip items.
 
 ------------------------------------------------------------------------
 
